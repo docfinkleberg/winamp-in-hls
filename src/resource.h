@@ -1,0 +1,14 @@
+#pragma once
+
+#define IDD_CONFIG 101
+#define IDD_INFOBOX 102
+#define IDC_TIMEOUT 1001
+#define IDC_BUFFER 1002
+#define IDC_UA 1003
+#define IDC_LOG 1004
+#define IDC_RECONNECT 1005
+#define IDC_INFO_URL 1101
+#define IDC_INFO_TITLE 1102
+#define IDC_INFO_TYPE 1103
+#define IDC_INFO_AUDIO 1104
+#define IDC_INFO_STATUS 1105

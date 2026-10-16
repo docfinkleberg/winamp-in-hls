@@ -1,0 +1,4 @@
+LIBRARY in_hls
+EXPORTS
+    winampGetInModule2
+    winampUninstallPlugin

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <FfmpegLibs>avformat.lib;avcodec.lib;avutil.lib;swresample.lib</FfmpegLibs>
+    <FfmpegDelayDlls>avformat-63.dll;avcodec-63.dll;avutil-61.dll;swresample-7.dll</FfmpegDelayDlls>
+  </PropertyGroup>
+</Project>

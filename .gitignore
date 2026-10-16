@@ -1,0 +1,14 @@
+build/
+tools/
+.vs/
+*.user
+*.suo
+*.sdf
+*.opensdf
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+third_party/ffmpeg/
+third_party/downloads/
+third_party/licences/gpl-3.0.txt
