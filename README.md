@@ -1,10 +1,14 @@
 # HLS input plug-in for Winamp 5.x
 
+<img src="dist/screen.png" align="right" width="420" alt="Winamp playing a live HLS radio stream with the plug-in's stream info window">
+
 `in_hls.dll` is a 32-bit Winamp input plug-in. It plays HTTP and HTTPS HLS audio whose URL path ends in `.m3u8`, and local `.m3u8` playlists. Decoding is done by FFmpeg's libraries (`libavformat`, `libavcodec`, `libavutil` and `libswresample`). The plug-in does not run `ffmpeg.exe`.
 
 Live playlists, which do not report a duration, are treated as non-seekable and use Winamp's unknown-length convention (`-1` milliseconds). On-demand playlists with a finite duration can be seeked. DRM-protected streams are not supported.
 
 The plug-in code in this repository is under the MIT licence in `LICENSE.md`. FFmpeg and the Winamp interface headers have their own licences. See `THIRD-PARTY-NOTICES.md` before you redistribute a build.
+
+<br clear="all">
 
 ## What you need
 
