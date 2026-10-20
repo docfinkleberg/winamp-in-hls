@@ -8,7 +8,7 @@ struct Settings {
     int timeout_ms = 15000;
     int buffer_ms = 2000;
     bool reconnect = true;
-    std::string user_agent = "WinampHLS/1.1";
+    std::string user_agent = "WinampHLS/1.1.1";
 };
 
 Settings load_settings(const std::wstring& directory);

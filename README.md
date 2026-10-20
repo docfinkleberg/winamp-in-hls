@@ -49,7 +49,7 @@ This creates `dist\in_hls-win32` with the plug-in, the x86 FFmpeg runtime DLLs, 
 
 ## Installer
 
-A prebuilt NSIS installer and the unpacked plug-in package are in [`dist`](https://github.com/docfinkleberg/winamp-in-hls/tree/master/dist) (`in_hls-1.1.0-win32-setup.exe`).
+A prebuilt NSIS installer and the unpacked plug-in package are in [`dist`](https://github.com/docfinkleberg/winamp-in-hls/tree/master/dist) (`in_hls-1.1.1-win32-setup.exe`).
 
 To rebuild locally:
 
@@ -57,11 +57,11 @@ To rebuild locally:
 powershell -ExecutionPolicy Bypass -File .\scripts\make-installer.ps1
 ```
 
-This runs the package step if needed, then compiles `dist\in_hls-1.1.0-win32-setup.exe`. NSIS is the same installer system Winamp and most Winamp plug-ins use. If `makensis` is not already on the machine, the script downloads the pinned NSIS 3.13 zip into `third_party/downloads` and extracts it under `tools/nsis`.
+This runs the package step if needed, then compiles `dist\in_hls-1.1.1-win32-setup.exe`. NSIS is the same installer system Winamp and most Winamp plug-ins use. If `makensis` is not already on the machine, the script downloads the pinned NSIS 3.13 zip into `third_party/downloads` and extracts it under `tools/nsis`.
 
 ## Install in Winamp
 
-**With the installer:** download `in_hls-1.1.0-win32-setup.exe` from [`dist`](https://github.com/docfinkleberg/winamp-in-hls/tree/master/dist), or run the copy under `dist\` after a local build. It detects Winamp's Plugins folder from the registry when possible. Restart Winamp afterwards.
+**With the installer:** download `in_hls-1.1.1-win32-setup.exe` from [`dist`](https://github.com/docfinkleberg/winamp-in-hls/tree/master/dist), or run the copy under `dist\` after a local build. It detects Winamp's Plugins folder from the registry when possible. Restart Winamp afterwards.
 
 **Manual / scripted:**
 

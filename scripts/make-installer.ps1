@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$version = '1.1.0'
+$version = '1.1.1'
 $dist = Join-Path $root 'dist\in_hls-win32'
 $nsi = Join-Path $root 'packaging\in_hls.nsi'
 $nsisVersion = '3.13'

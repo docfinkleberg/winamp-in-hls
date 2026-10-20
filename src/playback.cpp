@@ -218,8 +218,9 @@ std::string resolve_display_title(In_Module* module, const char* file, const std
     return file && file[0] ? base_name(file) : std::string{};
 }
 
-// Classic Winamp SetInfo: bitrate kbps, sample rate in kHz (not Hz),
-// and channel count (1=mono, 2=stereo) — matching in_opus.
+// Classic Winamp SetInfo: bitrate in kbps, sample rate in kHz, channel count.
+// Pass <= 0 for any field that should stay unchanged. A channel count makes
+// Winamp destroy and recreate its EQ filter, so only the first call may send it.
 void set_winamp_info(In_Module* mod, int bitrate_kbps, int sample_rate_hz, int channels) {
     if (!mod || !mod->SetInfo) {
         return;
@@ -1081,8 +1082,9 @@ void Playback::thread_main(std::string filename, uint32_t play_generation) {
                         if (kbps > 0) {
                             impl_->bitrate_kbps.store(kbps);
                         }
-                        set_winamp_info(
-                            mod, kbps, impl_->sample_rate.load(), channels);
+                        // Bitrate only. Sending the channel count again makes Winamp
+                        // rebuild the EQ, and the rebuilt filter is never set up.
+                        set_winamp_info(mod, kbps, -1, -1);
                         last_info = now;
                     }
                 }

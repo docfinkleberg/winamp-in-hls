@@ -1,4 +1,4 @@
-HLS Input Plug-in 1.1.0 for 32-bit Winamp 5.x
+HLS Input Plug-in 1.1.1 for 32-bit Winamp 5.x
 ================================================
 
 This folder plays HTTP and HTTPS HLS audio (.m3u8), including live radio
@@ -7,7 +7,7 @@ not supported.
 
 Installation
 ------------
-Preferred: run the NSIS installer (in_hls-1.1.0-win32-setup.exe). It finds
+Preferred: run the NSIS installer (in_hls-1.1.1-win32-setup.exe). It finds
 Winamp's Plugins folder when the registry entries are present.
 
 Manual install:

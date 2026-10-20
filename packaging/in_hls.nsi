@@ -4,7 +4,7 @@
 ; Winamp and most of its plug-ins use NSIS; this keeps the same installer family.
 
 !define PRODUCT_NAME "HLS Input Plug-in for Winamp"
-!define PRODUCT_VERSION "1.1.0"
+!define PRODUCT_VERSION "1.1.1"
 !define PRODUCT_PUBLISHER "winamp-in-hls"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\in_hls"
 !define PACKAGE_DIR "..\dist\in_hls-win32"
