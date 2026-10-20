@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$version = '1.0.0'
+$version = '1.1.0'
 $dist = Join-Path $root 'dist\in_hls-win32'
 $nsi = Join-Path $root 'packaging\in_hls.nsi'
 $nsisVersion = '3.13'
@@ -62,11 +62,11 @@ if (-not (Test-Path (Join-Path $dist 'in_hls.dll'))) {
 
 $required = @(
     'in_hls.dll',
-    'avutil-61.dll',
-    'swresample-7.dll',
-    'swscale-10.dll',
-    'avcodec-63.dll',
-    'avformat-63.dll',
+    'in_hls\avutil-61.dll',
+    'in_hls\swresample-7.dll',
+    'in_hls\swscale-10.dll',
+    'in_hls\avcodec-63.dll',
+    'in_hls\avformat-63.dll',
     'README.txt',
     'LICENSE.md',
     'THIRD-PARTY-NOTICES.md',

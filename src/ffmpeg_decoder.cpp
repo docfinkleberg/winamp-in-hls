@@ -99,6 +99,7 @@ std::string extract_opening_url(const char* line) {
 }
 
 void note_opened_url(FfmpegDecoderState* impl, const std::string& url);
+void dispatch_ffmpeg_log_line(const char* line);
 
 void av_log_capture(void* ptr, int level, const char* fmt, va_list vl) {
     if (g_previous_av_log) {
@@ -113,14 +114,7 @@ void av_log_capture(void* ptr, int level, const char* fmt, va_list vl) {
     }
     char line[1024] = {};
     vsnprintf(line, sizeof(line), fmt, vl);
-    const std::string url = extract_opening_url(line);
-    if (url.empty()) {
-        return;
-    }
-    std::lock_guard<std::mutex> lock(g_log_mu);
-    if (g_log_target) {
-        note_opened_url(g_log_target, url);
-    }
+    dispatch_ffmpeg_log_line(line);
 }
 
 }  // namespace
@@ -156,6 +150,8 @@ struct FfmpegDecoderState {
     std::string last_error;
     std::atomic<bool> local_stop{false};
     std::atomic<bool>* external_stop = nullptr;
+    DecoderLogFn log_hook = nullptr;
+    void* log_hook_user = nullptr;
 
     bool stopping() const {
         if (local_stop.load(std::memory_order_acquire)) {
@@ -185,6 +181,29 @@ void note_opened_url(FfmpegDecoderState* impl, const std::string& url) {
     }
     impl->last_segment_url = url;
     impl->segments_seen.fetch_add(1, std::memory_order_relaxed);
+}
+
+void dispatch_ffmpeg_log_line(const char* line) {
+    if (!line || !line[0] || line[0] == '\n') {
+        return;
+    }
+    DecoderLogFn hook = nullptr;
+    void* hook_user = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_log_mu);
+        if (!g_log_target) {
+            return;
+        }
+        const std::string url = extract_opening_url(line);
+        if (!url.empty()) {
+            note_opened_url(g_log_target, url);
+        }
+        hook = g_log_target->log_hook;
+        hook_user = g_log_target->log_hook_user;
+    }
+    if (hook) {
+        hook(line, hook_user);
+    }
 }
 
 void install_log_capture(FfmpegDecoderState* impl) {
@@ -558,9 +577,23 @@ bool FfmpegDecoder::open(const std::string& url, const DecoderSettings& settings
     return true;
 }
 
+void FfmpegDecoder::set_log_hook(DecoderLogFn fn, void* user) {
+    if (!impl_) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_log_mu);
+    impl_->log_hook = fn;
+    impl_->log_hook_user = user;
+}
+
 void FfmpegDecoder::close() {
     if (!impl_) {
         return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_log_mu);
+        impl_->log_hook = nullptr;
+        impl_->log_hook_user = nullptr;
     }
     uninstall_log_capture(impl_);
     if (impl_->swr) {

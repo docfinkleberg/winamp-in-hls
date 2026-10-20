@@ -29,6 +29,8 @@ struct DecoderStatus {
 
 struct FfmpegDecoderState;
 
+using DecoderLogFn = void (*)(const char* line, void* user);
+
 class FfmpegDecoder {
 public:
     FfmpegDecoder();
@@ -39,6 +41,8 @@ public:
 
     void set_stop_flag(std::atomic<bool>* flag);
     void request_stop();
+    // Called from FFmpeg's log callback on the thread that is opening or reading.
+    void set_log_hook(DecoderLogFn fn, void* user);
 
     bool open(const std::string& url, const DecoderSettings& settings, std::string& error);
     void close();

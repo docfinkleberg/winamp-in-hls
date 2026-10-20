@@ -4,7 +4,7 @@
 ; Winamp and most of its plug-ins use NSIS; this keeps the same installer family.
 
 !define PRODUCT_NAME "HLS Input Plug-in for Winamp"
-!define PRODUCT_VERSION "1.0.0"
+!define PRODUCT_VERSION "1.1.0"
 !define PRODUCT_PUBLISHER "winamp-in-hls"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\in_hls"
 !define PACKAGE_DIR "..\dist\in_hls-win32"
@@ -105,14 +105,22 @@ FunctionEnd
 
 Section "Plug-in" SecPlugin
   SectionIn RO
-  SetOutPath $INSTDIR
+  ; Drop FFmpeg copies left in Plugins\ by 1.0.0 so they cannot clash.
+  Delete "$INSTDIR\avutil-61.dll"
+  Delete "$INSTDIR\swresample-7.dll"
+  Delete "$INSTDIR\swscale-10.dll"
+  Delete "$INSTDIR\avcodec-63.dll"
+  Delete "$INSTDIR\avformat-63.dll"
 
+  SetOutPath "$INSTDIR\in_hls"
+  File "${PACKAGE_DIR}\in_hls\avutil-61.dll"
+  File "${PACKAGE_DIR}\in_hls\swresample-7.dll"
+  File "${PACKAGE_DIR}\in_hls\swscale-10.dll"
+  File "${PACKAGE_DIR}\in_hls\avcodec-63.dll"
+  File "${PACKAGE_DIR}\in_hls\avformat-63.dll"
+
+  SetOutPath $INSTDIR
   File "${PACKAGE_DIR}\in_hls.dll"
-  File "${PACKAGE_DIR}\avutil-61.dll"
-  File "${PACKAGE_DIR}\swresample-7.dll"
-  File "${PACKAGE_DIR}\swscale-10.dll"
-  File "${PACKAGE_DIR}\avcodec-63.dll"
-  File "${PACKAGE_DIR}\avformat-63.dll"
   File "${PACKAGE_DIR}\README.txt"
   File "${PACKAGE_DIR}\LICENSE.md"
   File "${PACKAGE_DIR}\THIRD-PARTY-NOTICES.md"
@@ -139,6 +147,12 @@ Section "Uninstall"
   Delete "$INSTDIR\swscale-10.dll"
   Delete "$INSTDIR\avcodec-63.dll"
   Delete "$INSTDIR\avformat-63.dll"
+  Delete "$INSTDIR\in_hls\avutil-61.dll"
+  Delete "$INSTDIR\in_hls\swresample-7.dll"
+  Delete "$INSTDIR\in_hls\swscale-10.dll"
+  Delete "$INSTDIR\in_hls\avcodec-63.dll"
+  Delete "$INSTDIR\in_hls\avformat-63.dll"
+  RMDir "$INSTDIR\in_hls"
   Delete "$INSTDIR\README.txt"
   Delete "$INSTDIR\LICENSE.md"
   Delete "$INSTDIR\THIRD-PARTY-NOTICES.md"

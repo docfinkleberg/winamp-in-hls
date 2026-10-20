@@ -4,6 +4,7 @@
 #include "playback.h"
 #include "playlist_file.h"
 #include "settings.h"
+#include "stream_status.h"
 #include "url_util.h"
 
 #include "in2.h"
@@ -149,6 +150,22 @@ void test_urls() {
           "http://example.com/a.m3u8?token=abc%2Bdef");
     CHECK(canonical_media_path("C:\\music\\playlist.m3u9") == "C:\\music\\playlist.m3u8");
     CHECK(canonical_media_path(signed_url) == signed_url);
+}
+
+void test_stream_status() {
+    CHECK(hint_from_text("Opening 'http://example.com/live.m3u8' for reading") == StreamHint::PlaylistOpen);
+    CHECK(hint_from_text("Skip ('#EXT-X-VERSION:3')") == StreamHint::ManifestParse);
+    CHECK(hint_from_text("Opening 'http://example.com/seg000.ts' for reading") == StreamHint::MediaSegment);
+    CHECK(hint_from_text("Server returned 404 Not Found") == StreamHint::Http404);
+    CHECK(hint_from_text("Connection timed out") == StreamHint::TimedOut);
+    CHECK(hint_from_text("Invalid data found when processing input") == StreamHint::BadManifest);
+    CHECK(hint_from_text("No decoder is available for this audio codec") == StreamHint::UnsupportedCodec);
+    CHECK(hint_from_text("Unable to open key file for AES-128") == StreamHint::Drm);
+    CHECK(std::string(status_for_hint(StreamHint::Http404)) == "[404 Segment Not Found]");
+    CHECK(buffering_status(42) == "[Buffering... 42%]");
+    CHECK(title_looks_like_status("[Connecting...]"));
+    CHECK(title_looks_like_status("[Buffering... 10%]"));
+    CHECK(!title_looks_like_status("BBC - Radio 1"));
 }
 
 void test_playlist_file() {
@@ -357,6 +374,7 @@ bool wait_until_stopped(Playback& playback, int timeout_ms) {
 int main() {
     test_audio_buffer();
     test_urls();
+    test_stream_status();
     test_playlist_file();
     CHECK(sizeof(void*) == 4);
 

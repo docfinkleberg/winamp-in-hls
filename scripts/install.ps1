@@ -54,23 +54,36 @@ if (-not (Test-Path $WinampPlugins)) {
     throw "Winamp Plugins folder does not exist: $WinampPlugins"
 }
 
-$files = @(
+$rootFiles = @(
     'in_hls.dll',
-    'avutil-61.dll',
-    'swresample-7.dll',
-    'swscale-10.dll',
-    'avcodec-63.dll',
-    'avformat-63.dll',
     'README.txt',
     'LICENSE.md',
     'THIRD-PARTY-NOTICES.md',
     'FFMPEG-LGPL-3.0.txt',
     'GPL-3.0.txt'
 )
+$ffmpegFiles = @(
+    'avutil-61.dll',
+    'swresample-7.dll',
+    'swscale-10.dll',
+    'avcodec-63.dll',
+    'avformat-63.dll'
+)
 
 Write-Host "Installing from $PackageDir"
 Write-Host "Destination:     $WinampPlugins"
-foreach ($name in $files) {
+$ffmpegDest = Join-Path $WinampPlugins 'in_hls'
+if (-not $WhatIf) {
+    New-Item -ItemType Directory -Force -Path $ffmpegDest | Out-Null
+    foreach ($name in $ffmpegFiles) {
+        $stale = Join-Path $WinampPlugins $name
+        if (Test-Path $stale) {
+            Remove-Item -Force $stale
+            Write-Host "Removed old $name from Plugins"
+        }
+    }
+}
+foreach ($name in $rootFiles) {
     $source = Join-Path $PackageDir $name
     if (-not (Test-Path $source)) { throw "Missing package file: $source" }
     $dest = Join-Path $WinampPlugins $name
@@ -79,6 +92,17 @@ foreach ($name in $files) {
     } else {
         Copy-Item -Force $source $dest
         Write-Host "Copied $name"
+    }
+}
+foreach ($name in $ffmpegFiles) {
+    $source = Join-Path $PackageDir "in_hls\$name"
+    if (-not (Test-Path $source)) { throw "Missing package file: $source" }
+    $dest = Join-Path $ffmpegDest $name
+    if ($WhatIf) {
+        Write-Host "Would copy in_hls\$name"
+    } else {
+        Copy-Item -Force $source $dest
+        Write-Host "Copied in_hls\$name"
     }
 }
 

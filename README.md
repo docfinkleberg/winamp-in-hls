@@ -49,7 +49,7 @@ This creates `dist\in_hls-win32` with the plug-in, the x86 FFmpeg runtime DLLs, 
 
 ## Installer
 
-A prebuilt NSIS installer and the unpacked plug-in package are in [`dist`](https://github.com/docfinkleberg/winamp-in-hls/tree/master/dist) (`in_hls-1.0.0-win32-setup.exe`).
+A prebuilt NSIS installer and the unpacked plug-in package are in [`dist`](https://github.com/docfinkleberg/winamp-in-hls/tree/master/dist) (`in_hls-1.1.0-win32-setup.exe`).
 
 To rebuild locally:
 
@@ -57,22 +57,24 @@ To rebuild locally:
 powershell -ExecutionPolicy Bypass -File .\scripts\make-installer.ps1
 ```
 
-This runs the package step if needed, then compiles `dist\in_hls-1.0.0-win32-setup.exe`. NSIS is the same installer system Winamp and most Winamp plug-ins use. If `makensis` is not already on the machine, the script downloads the pinned NSIS 3.13 zip into `third_party/downloads` and extracts it under `tools/nsis`.
+This runs the package step if needed, then compiles `dist\in_hls-1.1.0-win32-setup.exe`. NSIS is the same installer system Winamp and most Winamp plug-ins use. If `makensis` is not already on the machine, the script downloads the pinned NSIS 3.13 zip into `third_party/downloads` and extracts it under `tools/nsis`.
 
 ## Install in Winamp
 
-**With the installer:** download `in_hls-1.0.0-win32-setup.exe` from [`dist`](https://github.com/docfinkleberg/winamp-in-hls/tree/master/dist), or run the copy under `dist\` after a local build. It detects Winamp's Plugins folder from the registry when possible. Restart Winamp afterwards.
+**With the installer:** download `in_hls-1.1.0-win32-setup.exe` from [`dist`](https://github.com/docfinkleberg/winamp-in-hls/tree/master/dist), or run the copy under `dist\` after a local build. It detects Winamp's Plugins folder from the registry when possible. Restart Winamp afterwards.
 
 **Manual / scripted:**
 
 1. Install 32-bit Winamp 5.x.
-2. Copy every file from `dist\in_hls-win32` into Winamp's `Plugins` folder (the same folder as `in_hls.dll`), or run `scripts\install.ps1`.
+2. Copy `in_hls.dll` and the `in_hls` folder from `dist\in_hls-win32` into Winamp's `Plugins` folder, or run `scripts\install.ps1`. The FFmpeg DLLs stay in `Plugins\in_hls`.
 3. Restart Winamp.
 4. Play a local `.m3u8` file, or open a location whose path ends in `.m3u8`. Query strings are preserved.
 
 Winamp's own playlist loader claims a path ending in `.m3u8` and expands it into segment files. The plug-in renames that extension to `.m3u9` on the command line, in the Open URL box and for files dropped on the main window, then opens the original `.m3u8` playlist. The playlist editor can show the `.m3u9` alias. A normal Winamp playlist saved as `.m3u8` and opened with the playlist commands is left for Winamp.
 
-The FFmpeg DLLs are loaded from the plug-in directory with `LoadLibraryExW` and `LOAD_WITH_ALTERED_SEARCH_PATH`, and the FFmpeg imports are delay-loaded. Winamp's own directory and the process `PATH` are not required. Leave the DLLs beside `in_hls.dll`.
+The FFmpeg DLLs are loaded from `Plugins\in_hls` with `LoadLibraryExW` and `LOAD_WITH_ALTERED_SEARCH_PATH`, and the FFmpeg imports are delay-loaded. That private folder keeps them from clashing with other plug-ins that ship a different FFmpeg build. Winamp's own directory and the process `PATH` are not required.
+
+While a station is opening, or if the connection drops, the playlist row shows a Shoutcast-style status (`[Connecting...]`, `[Downloading Playlist]`, `[Parsing M3U8...]`, `[Selecting Stream Variant]`, `[Buffering... N%]`, then the station name). Interrupted streams show `[404 Segment Not Found]`, `[Manifest Timed Out]`, `[Invalid M3U8 / Bad Manifest]`, `[Unsupported HLS Variant / Codec]`, `[DRM Protected / Key Error]`, or `[Segment Buffer Underflow]`.
 
 Optional settings are stored in `in_hls.ini` next to the plug-in (`log`, `verbose`, `timeout_ms`, `buffer_ms`, `reconnect`, `user_agent`). The configuration dialogue in Winamp edits the common values. Set `IN_HLS_LOG=1` to force a log for one session. The log file is `in_hls.log` next to the plug-in when that folder can be written. Otherwise it is `%LOCALAPPDATA%\in_hls\in_hls.log`.
 

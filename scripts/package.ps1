@@ -18,11 +18,13 @@ $runtime = @(
     'avcodec-63.dll',
     'avformat-63.dll'
 )
+$ffmpegDir = Join-Path $dist 'in_hls'
+New-Item -ItemType Directory -Force -Path $ffmpegDir | Out-Null
 $bin = Join-Path $root 'third_party\ffmpeg\bin'
 foreach ($name in $runtime) {
     $source = Join-Path $bin $name
     if (-not (Test-Path $source)) { throw "Missing FFmpeg runtime $source" }
-    Copy-Item $source $dist
+    Copy-Item $source $ffmpegDir
 }
 
 Copy-Item (Join-Path $root 'packaging\README.txt') (Join-Path $dist 'README.txt')
@@ -42,8 +44,8 @@ Copy-Item $gpl (Join-Path $dist 'GPL-3.0.txt')
 
 $tests = Join-Path $built 'in_hls_tests.exe'
 if (Test-Path $tests) {
-    Write-Host "Loading the packaged FFmpeg DLLs from $dist"
-    $env:IN_HLS_FFMPEG_DIR = $dist
+    Write-Host "Loading the packaged FFmpeg DLLs from $ffmpegDir"
+    $env:IN_HLS_FFMPEG_DIR = $ffmpegDir
     $env:IN_HLS_SKIP_HLS_MUX = '1'
     & $tests
     if ($LASTEXITCODE -ne 0) { throw "Packaged runtime failed the unit tests." }
@@ -52,4 +54,4 @@ if (Test-Path $tests) {
 }
 
 Write-Host "Package written to $dist"
-Get-ChildItem $dist | ForEach-Object { '{0,12} {1}' -f $_.Length, $_.Name }
+Get-ChildItem $dist -Recurse -File | ForEach-Object { '{0,12} {1}' -f $_.Length, $_.FullName.Substring($dist.Length + 1) }

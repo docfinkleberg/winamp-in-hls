@@ -62,7 +62,11 @@ std::string build_status_text(const PlaybackInfoSnapshot& snap) {
         return text;
     }
 
-    text = snap.paused ? "Paused" : "Playing";
+    if (!snap.connection_status.empty()) {
+        text += snap.connection_status;
+        text += "\r\n";
+    }
+    text += snap.paused ? "Paused" : "Playing";
     text += snap.decoder.live ? " - Live HLS" : " - On-demand HLS";
     text += "\r\n";
 

@@ -1,4 +1,4 @@
-HLS Input Plug-in 1.0.0 for 32-bit Winamp 5.x
+HLS Input Plug-in 1.1.0 for 32-bit Winamp 5.x
 ================================================
 
 This folder plays HTTP and HTTPS HLS audio (.m3u8), including live radio
@@ -7,15 +7,16 @@ not supported.
 
 Installation
 ------------
-Preferred: run the NSIS installer (in_hls-1.0.0-win32-setup.exe). It finds
+Preferred: run the NSIS installer (in_hls-1.1.0-win32-setup.exe). It finds
 Winamp's Plugins folder when the registry entries are present.
 
 Manual install:
 1. Install 32-bit Winamp 5.x. A 64-bit Winamp process cannot load this DLL.
-2. Copy in_hls.dll and every av*.dll and sw*.dll from this folder into
-   Winamp's Plugins directory. They must stay in that same directory.
-3. Restart Winamp.
-4. Play a local .m3u8 file, or open a URL whose path ends in .m3u8.
+2. Copy in_hls.dll into Winamp's Plugins directory.
+3. Copy the in_hls folder (the FFmpeg DLLs) into that same Plugins directory,
+   so the DLLs live in Plugins\in_hls and do not clash with other plug-ins.
+4. Restart Winamp.
+5. Play a local .m3u8 file, or open a URL whose path ends in .m3u8.
    Signed query strings are passed through unchanged.
 
 Winamp otherwise treats .m3u8 as one of its own playlists. This plug-in
@@ -23,8 +24,9 @@ renames that extension to .m3u9 when you open, drop or pass the file on
 the command line, then plays the original playlist. The playlist editor
 may show the .m3u9 name.
 
-The plug-in loads the FFmpeg DLLs from its own directory. An FFmpeg
-installation on PATH is not used and is not required.
+The plug-in loads the FFmpeg DLLs from the Plugins\in_hls folder next to
+in_hls.dll. An FFmpeg installation on PATH is not used and is not required.
+Leave that folder beside the plug-in. Do not copy those DLLs into Plugins.
 
 Playback
 --------

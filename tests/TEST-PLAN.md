@@ -15,7 +15,7 @@ Use an address you are allowed to open. The variable is optional.
 
 These steps need 32-bit Winamp 5.x and the files from `dist\in_hls-win32` copied into `Plugins`. A successful DLL build does not by itself show that Winamp loaded the plug-in.
 
-1. Restart Winamp and confirm **HLS Input Plug-in v1.0.0 (x86)** appears under input plug-ins. Open About and confirm the FFmpeg version string.
+1. Restart Winamp and confirm **HLS Input Plug-in v1.1.0 (x86)** appears under input plug-ins. Open About and confirm the FFmpeg version string. The FFmpeg DLLs should be in `Plugins\in_hls`, not beside other plug-ins.
 2. Play a local audio file wrapped as `.m3u8` only if you have one. The automated test already decodes a WAV directly. In Winamp, play a local `.m3u8` playlist whose segments Winamp can reach. Winamp's playlist loader would otherwise expand `.m3u8`; the plug-in renames that to `.m3u9` for the playlist editor and still opens the original file.
 3. Play a finite VOD HLS URL ending in `.m3u8`, including one with a query string. The title should appear, the length should become a positive time once playback has opened, and the position should advance.
 4. Seek within that VOD item. Playback should continue from the new position without a stuck UI.

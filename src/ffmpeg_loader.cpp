@@ -72,6 +72,39 @@ void ffmpeg_log_callback(void*, int level, const char* fmt, va_list args) {
     LOG_INFO("ffmpeg: %s", buffer);
 }
 
+std::wstring module_file_path(HMODULE module) {
+    wchar_t path[32768];
+    const DWORD n = GetModuleFileNameW(module, path, 32768);
+    if (n == 0 || n >= 32767) {
+        return {};
+    }
+    return path;
+}
+
+bool path_is_in_directory(const std::wstring& file, const std::wstring& directory) {
+    if (file.size() <= directory.size()) {
+        return false;
+    }
+    if (_wcsnicmp(file.c_str(), directory.c_str(), directory.size()) != 0) {
+        return false;
+    }
+    const wchar_t sep = file[directory.size()];
+    return sep == L'\\' || sep == L'/';
+}
+
+std::wstring default_ffmpeg_directory(const std::wstring& module_dir) {
+    if (module_dir.empty()) {
+        return {};
+    }
+    // Private folder so another plug-in's FFmpeg DLLs in Plugins\ are not used.
+    const std::wstring nested = join_path(module_dir, L"in_hls");
+    const std::wstring marker = join_path(nested, L"avformat-63.dll");
+    if (GetFileAttributesW(marker.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        return nested;
+    }
+    return module_dir;
+}
+
 HMODULE load_named(const std::wstring& directory, const char* ansi_name, std::string& error) {
     if (!ansi_name || !ansi_name[0]) {
         error = "FFmpeg DLL name was empty";
@@ -79,16 +112,28 @@ HMODULE load_named(const std::wstring& directory, const char* ansi_name, std::st
     }
     wchar_t wide_name[128] = {};
     MultiByteToWideChar(CP_ACP, 0, ansi_name, -1, wide_name, 128);
-    if (HMODULE existing = GetModuleHandleW(wide_name)) {
-        return existing;
-    }
     const std::wstring full = join_path(directory, wide_name);
+    if (HMODULE existing = GetModuleHandleW(wide_name)) {
+        const std::wstring loaded = module_file_path(existing);
+        if (path_is_in_directory(loaded, directory)) {
+            return existing;
+        }
+    }
     HMODULE module = LoadLibraryExW(full.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!module) {
         const DWORD code = GetLastError();
         char narrow[512] = {};
         WideCharToMultiByte(CP_UTF8, 0, full.c_str(), -1, narrow, 512, nullptr, nullptr);
         error = std::string("Could not load ") + narrow + " (Win32 error " + std::to_string(code) + ")";
+        return nullptr;
+    }
+    const std::wstring loaded = module_file_path(module);
+    if (!path_is_in_directory(loaded, directory)) {
+        char narrow[512] = {};
+        WideCharToMultiByte(CP_UTF8, 0, loaded.c_str(), -1, narrow, 512, nullptr, nullptr);
+        error = std::string("FFmpeg DLL ") + ansi_name +
+                " is already loaded from another plug-in (" + narrow + ")";
+        return nullptr;
     }
     return module;
 }
@@ -100,9 +145,6 @@ void note_dll_instance(void* instance) {
     std::lock_guard<std::recursive_mutex> lock(g_mu);
     g_instance = module;
     g_module_dir = directory_of_module(module);
-    if (g_search_dir.empty()) {
-        g_search_dir = g_module_dir;
-    }
 }
 
 void* loaded_module_instance() {
@@ -117,7 +159,10 @@ void set_ffmpeg_search_directory(const std::wstring& directory) {
 
 std::wstring ffmpeg_search_directory() {
     std::lock_guard<std::recursive_mutex> lock(g_mu);
-    return g_search_dir.empty() ? g_module_dir : g_search_dir;
+    if (!g_search_dir.empty()) {
+        return g_search_dir;
+    }
+    return default_ffmpeg_directory(g_module_dir);
 }
 
 std::wstring module_directory() {
@@ -145,16 +190,14 @@ bool load_ffmpeg_dlls(const std::wstring& directory, std::string& error) {
 
     bool ok = true;
     for (const wchar_t* name : kLoadOrder) {
-        const std::wstring full = join_path(directory, name);
-        HMODULE module = LoadLibraryExW(full.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+        char ansi[128] = {};
+        WideCharToMultiByte(CP_ACP, 0, name, -1, ansi, 128, nullptr, nullptr);
+        HMODULE module = load_named(directory, ansi, error);
         if (!module) {
             if (!is_required(name)) {
+                error.clear();
                 continue;
             }
-            const DWORD code = GetLastError();
-            char narrow[512] = {};
-            WideCharToMultiByte(CP_UTF8, 0, full.c_str(), -1, narrow, 512, nullptr, nullptr);
-            error = std::string("Could not load ") + narrow + " (Win32 error " + std::to_string(code) + ")";
             ok = false;
             break;
         }

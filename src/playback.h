@@ -9,6 +9,7 @@
 struct PlaybackInfoSnapshot {
     std::string file;
     std::string title;
+    std::string connection_status;
     bool playing = false;
     bool paused = false;
     bool current = false;
@@ -45,4 +46,8 @@ private:
     struct Impl;
     Impl* impl_;
     void thread_main(std::string filename, uint32_t play_generation);
+    void publish_status(const std::string& text, bool sticky);
+    void notify_title() const;
+    void note_ffmpeg_line(const char* line);
+    static void on_ffmpeg_log(const char* line, void* user);
 };

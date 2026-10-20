@@ -5,6 +5,7 @@
 #include "ffmpeg_loader.h"
 #include "log.h"
 #include "settings.h"
+#include "stream_status.h"
 #include "url_util.h"
 #include "winamp_eof.h"
 
@@ -55,6 +56,8 @@ constexpr UINT kIpcGetPlaylistFile = 211;
 constexpr UINT kIpcGetPlaylistFileW = 214;
 constexpr UINT kIpcGetPlaylistTitle = 212;
 constexpr UINT kIpcGetPlaylistTitleW = 213;
+// Winamp re-reads GetFileInfo and refreshes the current playlist row.
+constexpr UINT kIpcUpdateTitle = 243;
 
 std::string base_name(const std::string& path) {
     size_t end = path.find_first_of("?#");
@@ -105,6 +108,9 @@ bool same_media_path(const char* left, const char* right) {
 // True when the playlist title is just Winamp/plugin filler (URL or path leaf),
 // not an #EXTINF station name.
 bool title_looks_automatic(const std::string& title, const char* file) {
+    if (title_looks_like_status(title)) {
+        return true;
+    }
     if (title.empty() || !file || !file[0]) {
         return true;
     }
@@ -251,8 +257,15 @@ struct Playback::Impl {
     // cannot touch outMod after Close.
     std::atomic<uint32_t> play_generation{0};
     std::string title;
+    std::string station_title;
+    std::string status_text;
+    std::string remembered_file;
+    std::string remembered_station;
     std::string current_file;
     std::string error;
+    bool sticky_status = false;
+    int connect_rank = 0;
+    int playlists_seen = 0;
 };
 
 Playback::Playback(In_Module* module) : impl_(new Impl) {
@@ -311,12 +324,29 @@ int Playback::play(const char* filename) {
     impl_->seekable.store(false);
     impl_->output_open.store(false);
     // output_device_open is cleared only in stop() after Close.
+    std::string station = playlist_station_title(mod, filename);
+    if (title_looks_like_status(station)) {
+        station.clear();
+    }
     {
         std::lock_guard<std::mutex> lock(impl_->state_mu);
-        impl_->title.clear();
+        if (station.empty() && same_media_path(impl_->remembered_file.c_str(), filename)) {
+            station = impl_->remembered_station;
+        }
+        if (!station.empty()) {
+            impl_->remembered_file = canonical_media_path(filename);
+            impl_->remembered_station = station;
+        }
+        impl_->station_title = station;
+        impl_->title = station;
         impl_->error.clear();
         impl_->current_file = filename;
+        impl_->sticky_status = false;
+        impl_->connect_rank = 1;
+        impl_->playlists_seen = 0;
+        impl_->status_text = "[Connecting...]";
     }
+    notify_title();
     mod->is_seekable = 0;
 
     // Match in_opus: open the decoder and the output on the Play() thread
@@ -327,10 +357,14 @@ int Playback::play(const char* filename) {
     decode_settings.reconnect = settings.reconnect;
     decode_settings.user_agent = settings.user_agent;
     impl_->decoder.set_stop_flag(&impl_->stop);
+    impl_->decoder.set_log_hook(&Playback::on_ffmpeg_log, this);
 
     std::string open_error;
     const std::string input = to_ffmpeg_input(filename);
     if (!impl_->decoder.open(input, decode_settings, open_error)) {
+        const StreamHint hint = hint_from_text(open_error);
+        const char* label = status_for_hint(hint);
+        publish_status(label ? label : "[Invalid M3U8 / Bad Manifest]", true);
         std::lock_guard<std::mutex> lock(impl_->state_mu);
         impl_->error = open_error;
         impl_->title = open_error;
@@ -338,11 +372,20 @@ int Playback::play(const char* filename) {
         return -1;
     }
 
-    // Resolve outside state_mu: playlist IPC can re-enter GetFileInfo.
-    const std::string display_title = resolve_display_title(mod, filename, impl_->decoder.title());
     {
         std::lock_guard<std::mutex> lock(impl_->state_mu);
-        impl_->title = display_title;
+        if (impl_->station_title.empty()) {
+            std::string meta = impl_->decoder.title();
+            if (meta.empty()) {
+                meta = base_name(filename);
+            }
+            impl_->station_title = meta;
+            impl_->title = meta;
+            impl_->remembered_file = canonical_media_path(filename);
+            impl_->remembered_station = meta;
+        } else {
+            impl_->title = impl_->station_title;
+        }
     }
     impl_->duration_ms.store(static_cast<int>(impl_->decoder.duration_ms()));
     impl_->seekable.store(impl_->decoder.seekable());
@@ -353,6 +396,7 @@ int Playback::play(const char* filename) {
     const int channels = impl_->decoder.channels();
     if (rate <= 0 || channels <= 0) {
         impl_->decoder.close();
+        publish_status("[Unsupported HLS Variant / Codec]", true);
         std::lock_guard<std::mutex> lock(impl_->state_mu);
         impl_->error = "The stream did not report a sample rate";
         LOG_INFO("%s", impl_->error.c_str());
@@ -504,6 +548,18 @@ void Playback::stop() {
     }
     impl_->decoder.close();
     impl_->running.store(false);
+    bool restore_title = false;
+    {
+        std::lock_guard<std::mutex> lock(impl_->state_mu);
+        restore_title = !impl_->sticky_status;
+        if (restore_title) {
+            impl_->status_text.clear();
+            impl_->connect_rank = 6;
+        }
+    }
+    if (restore_title) {
+        notify_title();
+    }
     LOG_INFO(
         "stop complete gen=%u join_ms=%u",
         static_cast<unsigned>(gen_at_stop),
@@ -553,8 +609,17 @@ PlaybackInfoSnapshot Playback::info_snapshot(const char* file) const {
     snap.paused = impl_->paused.load() != 0;
     snap.current = snap.playing && !current_file.empty() &&
                    (asked.empty() || same_media_path(asked.c_str(), current_file.c_str()));
-    snap.title = resolve_display_title(
-        impl_->module, snap.current ? current_file.c_str() : snap.file.c_str(), stored_title);
+    {
+        std::lock_guard<std::mutex> lock(impl_->state_mu);
+        snap.connection_status = impl_->status_text;
+        if (snap.current && !impl_->station_title.empty()) {
+            snap.title = impl_->station_title;
+        }
+    }
+    if (snap.title.empty()) {
+        snap.title = resolve_display_title(
+            impl_->module, snap.current ? current_file.c_str() : snap.file.c_str(), stored_title);
+    }
     if (snap.current) {
         snap.position_ms = output_time_ms();
         snap.decoder = impl_->decoder.status();
@@ -581,8 +646,19 @@ void Playback::file_info(const char* file, char* title, int* length_ms) const {
 
     if (current && !current_file.empty()) {
         if (title) {
-            // Resolve outside the mutex: playlist IPC can re-enter GetFileInfo.
-            copy_title(title, resolve_display_title(impl_->module, current_file.c_str(), stored_title));
+            std::string shown = stored_title;
+            {
+                std::lock_guard<std::mutex> lock(impl_->state_mu);
+                if (!impl_->status_text.empty()) {
+                    shown = impl_->status_text;
+                } else if (!impl_->station_title.empty()) {
+                    shown = impl_->station_title;
+                }
+            }
+            if (shown.empty()) {
+                shown = base_name(current_file);
+            }
+            copy_title(title, shown);
         }
         if (length_ms) {
             *length_ms = impl_->duration_ms.load();
@@ -618,6 +694,103 @@ bool Playback::running() const {
 std::string Playback::last_error() const {
     std::lock_guard<std::mutex> lock(impl_->state_mu);
     return impl_->error;
+}
+
+void Playback::notify_title() const {
+    In_Module* mod = impl_->module;
+    if (!mod || !mod->hMainWindow) {
+        return;
+    }
+    const DWORD ui_thread = GetWindowThreadProcessId(mod->hMainWindow, nullptr);
+    if (ui_thread != 0 && ui_thread == GetCurrentThreadId()) {
+        SendMessageW(mod->hMainWindow, kWmWaIpc, 0, kIpcUpdateTitle);
+    } else {
+        PostMessageW(mod->hMainWindow, kWmWaIpc, 0, kIpcUpdateTitle);
+    }
+}
+
+void Playback::publish_status(const std::string& text, bool sticky) {
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lock(impl_->state_mu);
+        if (text.empty()) {
+            impl_->sticky_status = false;
+            impl_->connect_rank = 6;
+        } else {
+            impl_->sticky_status = sticky;
+        }
+        if (impl_->status_text != text) {
+            impl_->status_text = text;
+            changed = true;
+        }
+    }
+    if (changed) {
+        LOG_INFO("playlist status: %s", text.empty() ? "(station name)" : text.c_str());
+        notify_title();
+    }
+}
+
+void Playback::on_ffmpeg_log(const char* line, void* user) {
+    if (user && line) {
+        static_cast<Playback*>(user)->note_ffmpeg_line(line);
+    }
+}
+
+void Playback::note_ffmpeg_line(const char* line) {
+    if (!line || !line[0] || impl_->stop.load()) {
+        return;
+    }
+    const StreamHint hint = hint_from_text(line);
+    if (hint == StreamHint::None) {
+        return;
+    }
+    if (hint_is_terminal(hint) || hint == StreamHint::Reconnect) {
+        if (const char* label = status_for_hint(hint)) {
+            publish_status(label, false);
+        }
+        return;
+    }
+
+    int rank = 0;
+    const char* label = nullptr;
+    if (hint == StreamHint::PlaylistOpen) {
+        int seen = 0;
+        {
+            std::lock_guard<std::mutex> lock(impl_->state_mu);
+            seen = ++impl_->playlists_seen;
+        }
+        if (seen <= 1) {
+            rank = 2;
+            label = "[Downloading Playlist]";
+        } else {
+            rank = 4;
+            label = "[Selecting Stream Variant]";
+        }
+    } else if (hint == StreamHint::ManifestParse) {
+        rank = 3;
+        label = "[Parsing M3U8...]";
+    } else if (hint == StreamHint::MediaSegment) {
+        rank = 5;
+    }
+    if (rank <= 0) {
+        return;
+    }
+    bool advance = false;
+    {
+        std::lock_guard<std::mutex> lock(impl_->state_mu);
+        if (impl_->connect_rank < 6 && rank > impl_->connect_rank) {
+            impl_->connect_rank = rank;
+            advance = true;
+        }
+    }
+    if (!advance) {
+        return;
+    }
+    if (hint == StreamHint::MediaSegment) {
+        publish_status(buffering_status(0), false);
+    } else if (label) {
+        publish_status(label, false);
+    }
 }
 
 void Playback::thread_main(std::string filename, uint32_t play_generation) {
@@ -661,6 +834,33 @@ void Playback::thread_main(std::string filename, uint32_t play_generation) {
             static_cast<size_t>(k_vis_frames) * 2u * 2u * 8u,
             static_cast<size_t>(buffer_ms) * 48000u * 2u * 2u / 1000u);
         AudioBuffer buffer(capacity);
+        const int prime_rate = std::max(1, impl_->sample_rate.load());
+        const int prime_channels = std::max(1, impl_->channels.load());
+        size_t prime_target = static_cast<size_t>(buffer_ms) * static_cast<size_t>(prime_rate) *
+                              static_cast<size_t>(prime_channels) * 2u / 1000u;
+        const size_t one_block = static_cast<size_t>(k_vis_frames) * static_cast<size_t>(prime_channels) * 2u;
+        if (prime_target < one_block) {
+            prime_target = one_block;
+        }
+        if (prime_target > capacity / 2) {
+            prime_target = std::max(one_block, capacity / 2);
+        }
+        bool primed = false;
+        bool refilling = false;
+        DWORD empty_since = 0;
+        int last_buffer_percent = -1;
+        int read_retries = 0;
+
+        auto buffer_percent = [&]() {
+            if (prime_target == 0) {
+                return 100;
+            }
+            int percent = static_cast<int>((buffer.size() * 100) / prime_target);
+            if (percent > 100) {
+                percent = 100;
+            }
+            return percent;
+        };
 
         auto generation_live = [&]() {
             return impl_->play_generation.load() == play_generation;
@@ -721,7 +921,44 @@ void Playback::thread_main(std::string filename, uint32_t play_generation) {
             const bool bisect = decode_only_bisect();
             bool output_blocked = false;
 
-            if (impl_->output_open.load() && generation_live()) {
+            if (!primed) {
+                const int percent = buffer_percent();
+                if (percent != last_buffer_percent) {
+                    last_buffer_percent = percent;
+                    publish_status(buffering_status(percent), false);
+                }
+                if (decoder_eof || buffer.size() >= prime_target) {
+                    primed = true;
+                    refilling = false;
+                    publish_status({}, false);
+                }
+            } else if (buffer.size() == 0 && !decoder_eof && !impl_->paused.load()) {
+                if (empty_since == 0) {
+                    empty_since = GetTickCount();
+                } else if (GetTickCount() - empty_since > 300) {
+                    if (!refilling) {
+                        publish_status("[Segment Buffer Underflow]", false);
+                        refilling = true;
+                        last_buffer_percent = -1;
+                    }
+                }
+            } else if (refilling) {
+                empty_since = 0;
+                const int percent = buffer_percent();
+                if (percent != last_buffer_percent) {
+                    last_buffer_percent = percent;
+                    publish_status(buffering_status(percent), false);
+                }
+                if (buffer.size() >= prime_target / 2 || decoder_eof) {
+                    refilling = false;
+                    publish_status({}, false);
+                }
+            } else {
+                empty_since = 0;
+            }
+            const bool hold_output = !primed || refilling;
+
+            if (!hold_output && impl_->output_open.load() && generation_live()) {
                 const int channels = std::max(1, impl_->channels.load());
                 const int block = channels * 2;
                 size_t available = buffer.size();
@@ -861,15 +1098,63 @@ void Playback::thread_main(std::string filename, uint32_t play_generation) {
                 std::string read_error;
                 const int rc = decoder.read(pending, read_error);
                 if (rc == 1) {
-                    // Output was opened on the Play() thread.
+                    read_retries = 0;
+                    if (primed && !refilling) {
+                        std::string active;
+                        bool sticky = false;
+                        {
+                            std::lock_guard<std::mutex> lock(impl_->state_mu);
+                            active = impl_->status_text;
+                            sticky = impl_->sticky_status;
+                        }
+                        if (!sticky && !active.empty() && active.rfind("[Buffering", 0) != 0 &&
+                            active.rfind("[Segment Buffer", 0) != 0) {
+                            publish_status({}, false);
+                        }
+                    }
                 } else if (rc == 0) {
                     decoder_eof = true;
                     pending.clear();
                 } else if (rc == -2 || impl_->stop.load()) {
                     break;
                 } else {
-                    fail(read_error.empty() ? "Decode failed" : read_error);
-                    break;
+                    const StreamHint hint = hint_from_text(read_error);
+                    const bool fatal = hint == StreamHint::BadManifest || hint == StreamHint::UnsupportedCodec ||
+                                       hint == StreamHint::Drm;
+                    const bool retry = settings.reconnect && !fatal && read_retries < 3 && !impl_->stop.load();
+                    const char* label = status_for_hint(hint);
+                    publish_status(label ? label : "[Connecting...]", !retry);
+                    if (!retry) {
+                        fail(read_error.empty() ? "Decode failed" : read_error);
+                        break;
+                    }
+                    ++read_retries;
+                    decoder.close();
+                    decoder.set_log_hook(&Playback::on_ffmpeg_log, this);
+                    DecoderSettings again;
+                    again.timeout_ms = settings.timeout_ms;
+                    again.reconnect = settings.reconnect;
+                    again.user_agent = settings.user_agent;
+                    std::string reopen_error;
+                    if (!decoder.open(to_ffmpeg_input(filename.c_str()), again, reopen_error)) {
+                        const StreamHint reopen_hint = hint_from_text(reopen_error);
+                        const char* reopen_label = status_for_hint(reopen_hint);
+                        publish_status(reopen_label ? reopen_label : "[Connecting...]", true);
+                        fail(reopen_error.empty() ? read_error : reopen_error);
+                        break;
+                    }
+                    primed = false;
+                    refilling = false;
+                    last_buffer_percent = -1;
+                    decoder_eof = false;
+                    pending.clear();
+                    buffer.clear();
+                    {
+                        std::lock_guard<std::mutex> lock(impl_->state_mu);
+                        impl_->connect_rank = 1;
+                        impl_->playlists_seen = 0;
+                    }
+                    continue;
                 }
             }
 
